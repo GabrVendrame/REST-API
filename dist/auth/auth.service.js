@@ -15,10 +15,12 @@ const prisma_service_1 = require("../prisma/prisma.service");
 const argon = require("argon2");
 const library_1 = require("@prisma/client/runtime/library");
 const jwt_1 = require("@nestjs/jwt");
+const config_1 = require("@nestjs/config");
 let AuthService = class AuthService {
-    constructor(prisma, jwt) {
+    constructor(prisma, jwt, config) {
         this.prisma = prisma;
         this.jwt = jwt;
+        this.config = config;
     }
     async signin(dto) {
         const user = await this.prisma.user.findUnique({
@@ -31,8 +33,7 @@ let AuthService = class AuthService {
         const passwdMatches = await argon.verify(user.hash, dto.password);
         if (!passwdMatches)
             throw new common_1.ForbiddenException('Incorrect password!');
-        delete user.hash;
-        return user;
+        return this.signToken(user.id, user.email);
     }
     async signup(dto) {
         const hash = await argon.hash(dto.password);
@@ -43,23 +44,34 @@ let AuthService = class AuthService {
                     hash,
                 },
             });
-            delete user.hash;
-            return user;
+            return this.signToken(user.id, user.email);
         }
         catch (error) {
-            if (error instanceof
-                library_1.PrismaClientKnownRequestError) {
+            if (error instanceof library_1.PrismaClientKnownRequestError) {
                 if (error.code === 'P2002')
                     throw new common_1.ForbiddenException('Credentials already taken!');
             }
             throw error;
         }
     }
+    async signToken(userId, email) {
+        const payload = {
+            sub: userId,
+            email,
+        };
+        const secret = this.config.get('JWT_SECRET');
+        const token = await this.jwt.signAsync(payload, {
+            expiresIn: '15m',
+            secret: secret,
+        });
+        return { access_token: token };
+    }
 };
 exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)({}),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        jwt_1.JwtService])
+        jwt_1.JwtService,
+        config_1.ConfigService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map
